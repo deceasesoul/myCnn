@@ -2,10 +2,10 @@
 netconfig.imageDim = 28;
 netconfig.numClasses = 10;  % Number of classes (MNIST images fall into 10 classes)
 netconfig.filterDimC1 = 8;    % Filter size for conv layer
-netconfig.numFiltersC1 = 8;   % Number of filters for conv layer
+netconfig.numFiltersC1 = 6;   % Number of filters for conv layer
 netconfig.poolDim = 3;      % Pooling dimension, (should divide imageDim-filterDim+1)
 netconfig.filterDimC2=7;
-netconfig.numFiltersC2=20;
+netconfig.numFiltersC2=6;
 netconfig.hiddenSize=200;
 % Load MNIST Train
 %%
@@ -88,13 +88,13 @@ pre_iter=iter;
 pre_acc=0;
 plot(iter,1,'.');
 acc=0;
+
 while(true)
-    step=1-acc;
     validationIndex=randi(validationSize,1,256);
     for i=1:20
         %% COST FUNCTION
         trainIndex=randi(trainSize,1,batchSize);
-        alpha=rand*step;
+        alpha=rand*0.5;
         [cost, grad] = cnnCost(theta,trainData(:,:,trainIndex),trainLabel(:,trainIndex),netconfig);        
         theta=theta-alpha*grad;
         %         [cost, grad]=DCnnCostSoftMax_SGD_FixedMask(theta, netconfig,traindata,trainlabel,lamda,maskset2,batchSize);
@@ -109,7 +109,7 @@ while(true)
     
     iter=iter+1;
     %     plot(iter,acc,'x');
-    plot([pre_iter,iter],[pre_acc,acc],'-r');
+    plot([pre_iter,iter],[pre_acc,acc],'-k');
     drawnow;
     pre_iter=iter;
     pre_acc=acc;

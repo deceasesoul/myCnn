@@ -7,18 +7,13 @@ function [cost, grad] = cnnCost(theta,images,labels,netconfig)
 %  theta      -  unrolled parameter vector
 %  images     -  stores images in imageDim x imageDim x numImges
 %                array
-%  numClasses -  number of classes to predict
-%  filterDim  -  dimension of convolutional filter                            
-%  numFilters -  number of convolutional filters
-%  poolDim    -  dimension of pooling area
-%  pred       -  boolean only forward propagate and return
-%                predictions
-%
+%  labels
+%  netconfig
 %
 % Returns:
 %  cost       -  cross entropy cost
-%  grad       -  gradient with respect to theta (if pred==False)
-%  preds      -  list of predictions for each example (if pred==True)
+%  grad       -  gradient with respect to theta 
+
 
 
 imageDim = size(images,1); % height/width of image
@@ -58,13 +53,10 @@ convDim1 = netconfig.imageDim-netconfig.filterDimC1+1;
 outputDim1 = (convDim1)/netconfig.poolDim; % dimension of subsampled output
 convDim2 = outputDim1-netconfig.filterDimC2+1;
 
-
-%%% YOUR CODE HERE %%%
-
 activations1= cnnConvolve(netconfig.filterDimC1,netconfig.numFiltersC1,images,Wc1,bc1);
-
+figure(2),display_network(reshape(activations1,[],netconfig.numFiltersC1*numImages));
 activationsPooled=cnnPool(netconfig.poolDim,activations1);
-
+figure(3),display_network(reshape(activationsPooled,[],netconfig.numFiltersC1*numImages));
 activations2= cnnConvolve(netconfig.filterDimC2,netconfig.numFiltersC2,reshape(activationsPooled,outputDim1,outputDim1,[]),Wc2,bc2);
 %%  NN Layer
 aout=reshape(activations2,[],numImages);
@@ -90,38 +82,45 @@ cost = -1/numImages*sum(sum(labels.*log(probs)));
 Ws_grad = -1/numImages*((labels-probs)*anlayer');
 
 deltan=-Ws' * (labels - probs) .*anlayer .* (1-anlayer);
-deltaC2=zeros(size(activations2));
+% deltaC2=zeros(size(activations2));
 %activations2=reshape(activations2,[],numImages);
 
 deltaC1=zeros(size(activations1));
-tempdelta2=reshape(Wn'*deltan,1,1,6,60);
+tempdelta2=Wn'*deltan;
 
-for i=1:numImages    
-    for j=1:netconfig.numFiltersC2
-        deltaC2(:,:,j,i)=tempdelta2(:,:,j,i).*activations2(:,:,j,i).*(1-activations2(:,:,j,i));    
-    end
-end
-dc2temp=reshape(deltaC2,[],numImages);
+deltaC2=tempdelta2(:).*activations2(:).*(1-activations2(:));
+deltaC2=reshape(deltaC2,size(activations2));
+% for i=1:numImages    
+%     for j=1:netconfig.numFiltersC2
+%         deltaC2(:,:,j,i)=tempdelta2(:,:,j,i).*activations2(:,:,j,i).*(1-activations2(:,:,j,i));    
+%     end
+% end
+dc2temp=reshape(deltaC2,[],netconfig.numFiltersC1,numImages);
+
 for i=1:numImages
     for j=1:netconfig.numFiltersC1
 %        (1/poolDim^2) * kron(delta(:,:,j,i),ones(poolDim)).*activations(:,:,j,i).*(1-activations(:,:,j,i));
-        deltatt=Wc2(:,:,j)*dc2temp(j,i);
-        deltaC1(:,:,j,i)=   (1/netconfig.poolDim^2) * kron(deltatt(:,:,j,i),ones(netconfig.poolDim)) .*activations1(:,:,j,i).*(1-activations1(:,:,j,i));
+        dc1temp=zeros(7,7);
+        for k=1:netconfig.numFiltersC2
+            dc1temp=dc1temp+dc2temp(k,j,i)*Wc2(:,:,k);            
+        end
+        deltaC1(:,:,j,i) = (1/netconfig.poolDim^2) * kron(dc1temp,ones(netconfig.poolDim)) .*activations1(:,:,j,i).*(1-activations1(:,:,j,i));
     end
 end
 
 
 
 %%======================================================================
-%% STEP 1d: Gradient Calculation
+%%  Gradient Calculation
 
 wc1dgradtemp=zeros(size(Wc1));
 wc2dgradtemp=zeros(size(Wc2));
-b1dgradtemp=zeros(numFilters,1);
-b2dgradtemp=zeros(size(bc2));
 b1dgradtemp=zeros(size(bc1));
+b2dgradtemp=zeros(size(bc2));
 
 
+Wn_grad=1/numImages * deltan * reshape(activations2,[],numImages)';
+bn_grad=1/numImages*sum(deltan,2);
 
 for i=1:numImages    
     for j=1:netconfig.numFiltersC1
@@ -130,10 +129,11 @@ for i=1:numImages
         b1dgradtemp(j,1)=b1dgradtemp(j,1)+sum(sum(deltaC1(:,:,j,i)));
     end
 end
-for i=1:numImages    
+activationsPooledTemp=reshape(activationsPooled,7,7,[]);
+for i=1:numImages*netconfig.numFiltersC1    
     for j=1:netconfig.numFiltersC2
         deltak=rot90(deltaC2(:,:,j,i),2);
-        wc2dgradtemp(:,:,j)=wc2dgradtemp(:,:,j)+conv2(images(:,:,i),deltak,'valid');
+        wc2dgradtemp(:,:,j)=wc2dgradtemp(:,:,j)+activationsPooledTemp(:,:,i)*deltak;
         b2dgradtemp(j,1)=b2dgradtemp(j,1)+sum(sum(deltaC2(:,:,j,i)));
     end
 end
@@ -141,9 +141,10 @@ end
 
 Wc1_grad=1/numImages*wc1dgradtemp;
 Wc2_grad=1/numImages*wc2dgradtemp;
-bc_grad=1/numImages*bdgradtemp;
-%% Unroll gradient into grad vector for minFunc
-grad = [Wc1_grad(:) ;Wc2_grad(:); Wd_grad(:) ; bc_grad(:) ; bd_grad(:)];
+bc1_grad=1/numImages*b1dgradtemp;
+bc2_grad=1/numImages*b2dgradtemp;
+%%
+grad = [Wc1_grad(:) ;Wc2_grad(:); Wn_grad(:) ;Ws_grad(:); bc1_grad(:) ;bc2_grad(:) ;bn_grad(:)];
 
 end
 function sigm = sigmoid(x)
